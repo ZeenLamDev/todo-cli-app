@@ -1,4 +1,4 @@
-package main
+package store
 
 import (
 	"errors"
@@ -18,7 +18,11 @@ type Todo struct {
 
 type Todos []Todo
 
-func (todos *Todos) add(description string) {
+func NewTodos() Todos {
+	return Todos{}
+}
+
+func (todos *Todos) Add(description string) {
 	todo := Todo{
 		Description: description,
 		Status:      "Not started",
@@ -37,7 +41,7 @@ func (todos *Todos) validateIndex(index int) error {
 	return nil
 }
 
-func (todos *Todos) delete(index int) error {
+func (todos *Todos) Delete(index int) error {
 	t := *todos
 
 	if err := t.validateIndex(index); err != nil {
@@ -49,7 +53,7 @@ func (todos *Todos) delete(index int) error {
 	return nil
 }
 
-func (todos *Todos) toggle(index int) error {
+func (todos *Todos) Toggle(index int) error {
 	if err := todos.validateIndex(index); err != nil {
 		return err
 	}
@@ -68,7 +72,7 @@ func (todos *Todos) toggle(index int) error {
 	return nil
 }
 
-func (todos *Todos) edit(index int, description string) error {
+func (todos *Todos) Edit(index int, description string) error {
 	t := *todos
 
 	if err := t.validateIndex(index); err != nil {
@@ -80,7 +84,7 @@ func (todos *Todos) edit(index int, description string) error {
 	return nil
 }
 
-func (todos *Todos) print() {
+func (todos *Todos) Print() {
 	table := table.New(os.Stdout)
 	table.SetRowLines(false)
 	table.SetHeaders("#", "Description", "Status", "Created At")
