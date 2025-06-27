@@ -1,11 +1,13 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"time"
+	"todo/logutil"
 
 	"github.com/aquasecurity/table"
 )
@@ -22,7 +24,8 @@ func NewTodos() Todos {
 	return Todos{}
 }
 
-func (todos *Todos) Add(description string) {
+func (todos *Todos) Add(ctx context.Context, description string) {
+	logutil.Logger(ctx).Info("Adding todo", "description", description)
 	todo := Todo{
 		Description: description,
 		Status:      "Not started",
@@ -41,7 +44,8 @@ func (todos *Todos) validateIndex(index int) error {
 	return nil
 }
 
-func (todos *Todos) Delete(index int) error {
+func (todos *Todos) Delete(ctx context.Context, index int) error {
+	logutil.Logger(ctx).Info("Deleting todo", "index", index)
 	t := *todos
 
 	if err := t.validateIndex(index); err != nil {
@@ -53,7 +57,8 @@ func (todos *Todos) Delete(index int) error {
 	return nil
 }
 
-func (todos *Todos) Toggle(index int) error {
+func (todos *Todos) Toggle(ctx context.Context, index int) error {
+	logutil.Logger(ctx).Info("Changing todo status", "index", index)
 	if err := todos.validateIndex(index); err != nil {
 		return err
 	}
@@ -72,7 +77,8 @@ func (todos *Todos) Toggle(index int) error {
 	return nil
 }
 
-func (todos *Todos) Edit(index int, description string) error {
+func (todos *Todos) Edit(ctx context.Context, index int, description string) error {
+	logutil.Logger(ctx).Info("Editing todo", "index", index)
 	t := *todos
 
 	if err := t.validateIndex(index); err != nil {
@@ -84,7 +90,8 @@ func (todos *Todos) Edit(index int, description string) error {
 	return nil
 }
 
-func (todos *Todos) Print() {
+func (todos *Todos) Print(ctx context.Context) {
+	logutil.Logger(ctx).Info("Printing todos")
 	table := table.New(os.Stdout)
 	table.SetRowLines(false)
 	table.SetHeaders("#", "Description", "Status", "Created At")
