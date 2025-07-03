@@ -1,8 +1,12 @@
 package store
 
-import "context"
+import (
+	"context"
+	"todo/logutil"
+)
 
 type AddTodo struct {
+	Ctx         context.Context
 	Description string
 	Resp        chan error
 }
@@ -17,12 +21,14 @@ type GetAllTodos struct {
 }
 
 type EditTodo struct {
+	Ctx         context.Context
 	Index       int
 	Description string
 	Resp        chan error
 }
 
 type DeleteTodo struct {
+	Ctx   context.Context
 	Index int
 	Resp  chan error
 }
@@ -45,7 +51,8 @@ func (a *TodoActor) run() {
 	for msg := range a.inbox {
 		switch m := msg.(type) {
 		case AddTodo:
-			a.todos.Add(context.TODO(), m.Description)
+			logutil.Logger(m.Ctx).Info("Adding todo", "desc", m.Description)
+			a.todos.Add(m.Ctx, m.Description)
 			m.Resp <- nil
 
 		case GetTodo:
@@ -59,12 +66,44 @@ func (a *TodoActor) run() {
 			m.Resp <- a.todos
 
 		case EditTodo:
-			err := a.todos.Edit(context.TODO(), m.Index, m.Description)
+			logutil.Logger(m.Ctx).Info("Editing todo", "index", m.Index)
+			err := a.todos.Edit(m.Ctx, m.Index, m.Description)
 			m.Resp <- err
 
 		case DeleteTodo:
-			err := a.todos.Delete(context.TODO(), m.Index)
+			logutil.Logger(m.Ctx).Info("Deleting todo", "index", m.Index)
+			err := a.todos.Delete(m.Ctx, m.Index)
 			m.Resp <- err
 		}
 	}
+}
+
+func (a *TodoActor) Add(ctx context.Context, desc string) error {
+	resp := make(chan error)
+	a.inbox <- AddTodo{Ctx: ctx, Description: desc, Resp: resp}
+	return <-resp
+}
+
+func (a *TodoActor) Get(index int) Todo {
+	resp := make(chan Todo)
+	a.inbox <- GetTodo{Index: index, Resp: resp}
+	return <-resp
+}
+
+func (a *TodoActor) GetAll() Todos {
+	resp := make(chan Todos)
+	a.inbox <- GetAllTodos{Resp: resp}
+	return <-resp
+}
+
+func (a *TodoActor) Edit(ctx context.Context, index int, desc string) error {
+	resp := make(chan error)
+	a.inbox <- EditTodo{Ctx: ctx, Index: index, Description: desc, Resp: resp}
+	return <-resp
+}
+
+func (a *TodoActor) Delete(ctx context.Context, index int) error {
+	resp := make(chan error)
+	a.inbox <- DeleteTodo{Ctx: ctx, Index: index, Resp: resp}
+	return <-resp
 }

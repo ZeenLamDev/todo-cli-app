@@ -20,7 +20,7 @@ import (
 )
 
 type App struct {
-	Todos   store.Todos
+	Actor   *store.TodoActor
 	Storage *store.Storage[store.Todos]
 	Ctx     context.Context
 	Cancel  context.CancelFunc
@@ -31,15 +31,20 @@ func NewApp() *App {
 	ctx, cancel := SignalNotifyContext()
 	ctx = logutil.WithTraceID(ctx, traceID)
 
-	todos := store.NewTodos()
-	storage := store.NewStorage[store.Todos]("todos.json")
+	actor := store.NewTodoActor()
 
-	if err := storage.Load(ctx, &todos); err != nil {
+	storage := store.NewStorage[store.Todos]("todos.json")
+	var loaded store.Todos
+	if err := storage.Load(ctx, &loaded); err != nil {
 		slog.Warn("Could not load todos", slog.Any("error", err))
+	} else {
+		for _, t := range loaded {
+			actor.Add(ctx, t.Description)
+		}
 	}
 
 	return &App{
-		Todos:   todos,
+		Actor:   actor,
 		Storage: storage,
 		Ctx:     ctx,
 		Cancel:  cancel,
@@ -50,7 +55,7 @@ func (a *App) Shutdown() {
 	slog.Info("Shutting down and saving todos...")
 	defer a.Cancel()
 
-	if err := a.Storage.Save(a.Ctx, a.Todos); err != nil {
+	if err := a.Storage.Save(a.Ctx, a.Actor.GetAll()); err != nil {
 		slog.Error("Failed to save todos", slog.Any("error", err))
 	}
 }
@@ -104,19 +109,27 @@ func (a *App) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	a.Todos.Add(ctx, body.Description)
-	a.Storage.Save(a.Ctx, a.Todos)
+	err := a.Actor.Add(ctx, body.Description)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	a.Storage.Save(ctx, a.Actor.GetAll())
+
 	json.NewEncoder(w).Encode(map[string]string{"status": "created"})
 }
 
 func (a *App) handleGet(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get("id")
 	index, err := strconv.Atoi(idStr)
-	if err != nil || index < 0 || index >= len(a.Todos) {
+	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
-	json.NewEncoder(w).Encode(a.Todos[index])
+
+	todo := a.Actor.Get(index)
+	json.NewEncoder(w).Encode(todo)
 }
 
 func (a *App) handleUpdate(w http.ResponseWriter, r *http.Request) {
@@ -135,12 +148,12 @@ func (a *App) handleUpdate(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	err := a.Todos.Edit(ctx, body.ID, body.Description)
+	err := a.Actor.Edit(ctx, body.ID, body.Description)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	a.Storage.Save(ctx, a.Todos)
+	a.Storage.Save(ctx, a.Actor.GetAll())
 	json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
 }
 
@@ -149,21 +162,32 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	idStr := r.URL.Query().Get("id")
 	index, err := strconv.Atoi(idStr)
-	if err != nil || index < 0 || index >= len(a.Todos) {
+	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
 
 	ctx := r.Context()
+	todos := a.Actor.GetAll()
 
-	err = a.Todos.Delete(ctx, index)
-	if err != nil {
+	if index < 0 || index >= len(todos) {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	if err := a.Actor.Delete(ctx, index); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	a.Storage.Save(ctx, a.Todos)
+
+	if err := a.Storage.Save(ctx, a.Actor.GetAll()); err != nil {
+		http.Error(w, "failed to persist changes", http.StatusInternalServerError)
+		return
+	}
+
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 }
 
@@ -189,7 +213,7 @@ func (a *App) handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = tmpl.Execute(w, a.Todos)
+	err = tmpl.Execute(w, a.Actor.GetAll())
 	if err != nil {
 		logutil.Logger(ctx).Error("template exec error", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

@@ -8,6 +8,7 @@ import (
 	"todo/logutil"
 )
 
+// As i currently only have 1 store, would change this to be a global variable accessible throught the whole store
 type Storage[T any] struct {
 	FileName string
 }
